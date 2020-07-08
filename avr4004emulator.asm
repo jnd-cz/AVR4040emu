@@ -38,12 +38,14 @@ init:
     ; clear registers
     
     ; set pointers
-    
+    ldi ZH, high(data4040start << 1)
+    ldi ZL, low(data4040start << 1)
     ; 
 
 instructiondecode:
     ; load next instruction
-    
+    ld r24, ZL  ; store to check page boundary
+    lpm r16, Z+
     ; convert hex to bin?
     ;rcall intelhextobin
 
@@ -89,7 +91,8 @@ decodetree00000000:
     rjmp decodetreeend
 decodetree00000001:
     ; HLT
-    
+    ; TODO: set HALT and STOP flipflops and corresponding I/O
+    sleep
     rjmp decodetreeend
 decodetree0000001x:
     ;0000001x
@@ -99,11 +102,20 @@ decodetree0000001x:
     ;00000010
 decodetree00000010:
     ; BBS
+    ; decrement stack pointer
+    
+    ; restore program counter
+    
+    ; restore SRC
+    ; turn off INTA line
+    
+    ; restore index register bank (T flag)
     
     rjmp decodetreeend
 decodetree00000011:
     ; LCR
-    
+    ; transfer command register contents to the accumulator
+    mov r20, r15
     rjmp decodetreeend
 decodetree000001xx:
     ;000001xx
@@ -117,7 +129,9 @@ decodetree000001xx:
     ;00000100
 decodetree00000100:
     ; OR4
-    
+    ; logical or between R4 and ACC
+    ; TODO: choose bank with T flag
+    or r20, r4
     rjmp decodetreeend
 decodetree00000101:
     ; OR5
@@ -153,11 +167,13 @@ decodetree00001xxx:
     ;00001000
 decodetree00001000:
     ; DB0
-    
+    ; select CM-ROM0, the first ROM bank, 0x1000-0x1FFF
+    andi ZH, 0x1F
     rjmp decodetreeend
 decodetree00001001:
     ; DB1
-    
+    ; select CM-ROM1, the second ROM bank, 0x2000-0x2FFF
+    andi ZH, 0x2F
     rjmp decodetreeend
 decodetree0000101x:
     ;0000101x
@@ -167,13 +183,13 @@ decodetree0000101x:
     ;00001010
 decodetree00001010:
     ; SB0
-    ; use T flag
-    
+    ; use T flag, select register bank 0, use R0-R7, R8-Rf
+    clt
     rjmp decodetreeend
 decodetree00001011:
     ; SB1
-    ; use T flag
-    
+    ; use T flag, select register bank 1, use R10-R17, R8-Rf
+    set
     rjmp decodetreeend
 decodetree000011xx:
     ;000011xx
@@ -186,11 +202,13 @@ decodetree000011xx:
     rjmp decodetree00001101
     ;00001100
 decodetree00001100:
-    ; DIN
+    ; EIN
+    ; enable interrupt, set IE bit
     
     rjmp decodetreeend
 decodetree00001101:
-    ; EIN
+    ; DIN
+    ; disable interrupt, clear IE bit
     
     rjmp decodetreeend
 decodetree0000111x:
@@ -366,11 +384,22 @@ decodetree0010:
 
 decodetree0010xxx0:
     ; FIM
-    
+    ; fetch immediate data to selected register pair
+    lsr r16
+    andi r16, 0x07
+    mov YL, r16
+    ldi YH, 0
+    lpm r16, Z+
+    st Y, r16
     rjmp decodetreeend
 decodetree0010xxx1:
     ; SRC
-    
+    ; move data from register pair into SRC register
+    lsr r16
+    andi r16, 0x07
+    mov YL, r16
+    ldi YH, 0
+    ld r13, Y
     rjmp decodetreeend
 
 decodetree0011:
@@ -776,5 +805,6 @@ decodetreeend:
     ; etc
     rjmp instructiondecode
 
+data4040start:
     ; 4040 binary starts here, aligned to 256 bytes
 .org    0x1000  ; 4K
