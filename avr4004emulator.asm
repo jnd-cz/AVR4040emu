@@ -41,7 +41,8 @@ init:
     ldi ZH, high(data4040start << 1)
     ldi ZL, low(data4040start << 1)
     ; 
-
+    clt
+    
 instructiondecode:
     ; load next instruction
     ld r24, ZL  ; store to check page boundary
@@ -130,12 +131,19 @@ decodetree000001xx:
 decodetree00000100:
     ; OR4
     ; logical or between R4 and ACC
-    ; TODO: choose bank with T flag
-    or r20, r4
+    ; extract R4 from 8-bits
+    mov r18, r2
+    swap r18
+    andi r18, 0x0F
+    or r20, r18
     rjmp decodetreeend
 decodetree00000101:
     ; OR5
-    
+    ; logical or between R5 and ACC
+    ; extract R5 from 8-bits
+    mov r18, r2
+    andi r18, 0x0F
+    or r20, r18
     rjmp decodetreeend
 decodetree0000011x:
     ;0000011x
@@ -145,11 +153,20 @@ decodetree0000011x:
     ;00000110
 decodetree00000110:
     ; AN6
-    
+    ; logical and between R6 and ACC
+    ; extract R6 from 8-bits
+    mov r18, r3
+    swap r18
+    andi r18, 0x0F
+    and r20, r18
     rjmp decodetreeend
 decodetree00000111:
     ; AN7
-    
+    ; logical and between R7 and ACC
+    ; extract R7 from 8-bits
+    mov r18, r3
+    andi r18, 0x0F
+    and r20, r18
     rjmp decodetreeend
 decodetree00001xxx:
     ;00001xxx
@@ -169,11 +186,13 @@ decodetree00001000:
     ; DB0
     ; select CM-ROM0, the first ROM bank, 0x1000-0x1FFF
     andi ZH, 0x1F
+    ori ZH, 0x10
     rjmp decodetreeend
 decodetree00001001:
     ; DB1
     ; select CM-ROM1, the second ROM bank, 0x2000-0x2FFF
     andi ZH, 0x2F
+    ori ZH, 0x20
     rjmp decodetreeend
 decodetree0000101x:
     ;0000101x
@@ -184,12 +203,32 @@ decodetree0000101x:
 decodetree00001010:
     ; SB0
     ; use T flag, select register bank 0, use R0-R7, R8-Rf
+    ; if bank 0 was set already, skip
+    brtc decodetree00001010skip
+    ; else switch bank registers and clear T flag
+    movw r19:r18, r1:r0     ;16-bits = 4x4-bit registers at a time
+    movw r1:r0, r9:r8
+    movw r9:r8, r19:r19
+    movw r19:r18, r3:r2
+    movw r3:r2, r11:r10
+    movw r11:r10, r19:r19
     clt
+decodetree00001010skip:    
     rjmp decodetreeend
 decodetree00001011:
     ; SB1
     ; use T flag, select register bank 1, use R10-R17, R8-Rf
+    ; if bank 1 was set already, skip
+    brts decodetree00001011end
+    ; else switch bank registers and set T flag
+    movw r19:r18, r1:r0     ;16-bits = 4x4-bit registers at a time
+    movw r1:r0, r9:r8
+    movw r9:r8, r19:r19
+    movw r19:r18, r3:r2
+    movw r3:r2, r11:r10
+    movw r11:r10, r19:r19
     set
+decodetree00001011end:
     rjmp decodetreeend
 decodetree000011xx:
     ;000011xx
@@ -246,11 +285,11 @@ decodetree0001:
     ;00010000
 
 decodetree00010000:
-    ; JCN 0
+    ; JCN 0, jump never, no operation
     nop
     rjmp decodetreeend
 decodetree00010001:
-    ; JNT
+    ; JNT, jump is test = 0 (Vss)
     
     rjmp decodetreeend
 decodetree0001001x:
@@ -260,7 +299,7 @@ decodetree0001001x:
     rjmp decodetree00010011
     ;00010010
 decodetree00010010:
-    ; JC
+    ; JC, jump if carry = 1
     
     rjmp decodetreeend
 decodetree00010011:
@@ -278,7 +317,7 @@ decodetree000101xx:
     rjmp decodetree00010101
     ;00010100
 decodetree00010100:
-    ; JZ
+    ; JZ, jump if accumulator = 0
     
     rjmp decodetreeend
 decodetree00010101:
@@ -314,11 +353,11 @@ decodetree00011xxx:
     rjmp decodetree00011001
     ;00011000
 decodetree00011000:
-    ; JCN 8
+    ; JCN 8, jump always
     
     rjmp decodetreeend
 decodetree00011001:
-    ; JT
+    ; JT, jump if test = 1 (Vdd)
     
     rjmp decodetreeend
 decodetree0001101x:
@@ -328,7 +367,7 @@ decodetree0001101x:
     rjmp decodetree00011011
     ;00011010
 decodetree00011010:
-    ; JNC
+    ; JNC, jump is carry = 0
     
     rjmp decodetreeend
 decodetree00011011:
@@ -346,7 +385,7 @@ decodetree000111xx:
     rjmp decodetree00011101
     ;00011100
 decodetree00011100:
-    ; JNZ
+    ; JNZ, jump if accumulator != 0
     
     rjmp decodetreeend
 decodetree00011101:
@@ -430,12 +469,19 @@ decodetree01xx:
     ;0100
 decodetree0100:
     ; JUN
-
+    ; 4-bit MSB, load to program counter high byte
+    andi r16, 0x0F
+    andi ZH, 0xF0
+    or ZH, r16
+    ; load program counter low byte from following instruction byte
+    lpm Z+, r16
+    mov ZL, r16
     rjmp decodetreeend
 
 decodetree0101:
     ; JMS
-    
+    ; push program counter on stack
+    ; load program counter like with JUN
     rjmp decodetreeend
 
 decodetree011x:
@@ -507,7 +553,8 @@ decodetree1100:
 
 decodetree1101:
     ; LDM
-
+    andi r16, 0x0F
+    mov r20, r16
     rjmp decodetreeend
 
 decodetree111x:
@@ -801,8 +848,8 @@ decodetree11111111:
 
 decodetreeend:
     ; increment PC
+    ; wait for next cycle
     ; loop back
-    ; etc
     rjmp instructiondecode
 
 data4040start:
